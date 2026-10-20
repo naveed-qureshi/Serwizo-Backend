@@ -359,11 +359,14 @@ class ServiceRequestController extends Controller
                 "Service Request created via {$validated['request_source']}"
             );
 
+            $primaryJob = ServiceJob::find($primaryJobId);
+            $jobTitle = $primaryJob?->title ?? 'Multi-Item Work Order';
+
             AuditLogService::log(
                 action: 'created',
                 module: 'service_requests',
                 recordId: $serviceRequest->id,
-                description: "Created {$serviceRequest->sr_number} for {$customer->name} ({$job->title})"
+                description: "Created {$serviceRequest->sr_number} for {$customer->name} ({$jobTitle})"
             );
 
             return redirect()->route('service-requests.show', $serviceRequest)->with('success', 'Service request created successfully.');
