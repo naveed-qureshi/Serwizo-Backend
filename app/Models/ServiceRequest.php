@@ -78,7 +78,52 @@ class ServiceRequest extends Model
             'verified_at' => 'datetime',
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
+            'additional_jobs' => 'array',
         ];
+    }
+
+    public function getItemsAttribute(): array
+    {
+        $raw = $this->additional_jobs;
+        if (is_string($raw) && !empty($raw)) {
+            $raw = json_decode($raw, true);
+        }
+
+        if (is_array($raw) && count($raw) > 0) {
+            $first = reset($raw);
+            if (is_array($first) && (isset($first['title']) || isset($first['job_id']))) {
+                $items = [];
+                foreach ($raw as $idx => $item) {
+                    $item['uid'] = $item['uid'] ?? ('item_' . ($idx + 1) . '_' . ($item['job_id'] ?? 'custom'));
+                    $items[] = $item;
+                }
+                return $items;
+            }
+        }
+
+        // Fallback for single-job legacy requests
+        if ($this->service_job_id || $this->customer_price > 0 || $this->brand_rate > 0) {
+            $qty = max(1, (int)($this->quantity ?: 1));
+            return [[
+                'id' => 1,
+                'uid' => 'item_legacy_1',
+                'job_id' => $this->service_job_id,
+                'title' => $this->serviceJob?->title ?: 'Standard Service',
+                'category_id' => $this->category_id,
+                'category_title' => $this->category?->title ?: 'General',
+                'sub_category_id' => $this->sub_category_id,
+                'job_nature' => $this->job_nature ?: ($this->is_free_installation ? 'free_installation' : 'standard'),
+                'quantity' => $qty,
+                'unit_price' => (float)$this->customer_price / $qty,
+                'unit_wage' => (float)$this->worker_payment / $qty,
+                'brand_rate' => (float)$this->brand_rate / $qty,
+                'total_price' => (float)$this->customer_price,
+                'total_wage' => (float)$this->worker_payment,
+                'commission' => (float)$this->commission_amount,
+            ]];
+        }
+
+        return [];
     }
 
     public function customer()

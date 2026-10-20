@@ -110,6 +110,7 @@ class WorkerJobController extends Controller
                 'warranty_coverage' => $job->warranty_coverage,
                 'additionalJobs' => $job->additional_jobs,
                 'additional_jobs' => $job->additional_jobs,
+                'items' => $job->items,
                 'serviceValue' => (float)($job->service_value ?? 0),
                 'service_value' => (float)($job->service_value ?? 0),
                 'partsValue' => (float)($job->parts_value ?? 0),
@@ -259,6 +260,8 @@ class WorkerJobController extends Controller
                     'worker_wage' => (float)$job->worker_payment,
                     'customer_total' => (float)$job->customer_price,
                 ],
+                'items' => $job->items,
+                'additional_jobs' => $job->additional_jobs,
                 'customer_complaint' => $job->customer_complaint,
                 'special_instructions' => $job->special_instructions,
                 'proofs' => $job->proofs->map(fn($p) => [

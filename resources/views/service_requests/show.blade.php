@@ -181,43 +181,72 @@
                     </div>
                     @endif
 
-                    <!-- Additional / Add-On Jobs Card (If modified on-site) -->
-                    @if($serviceRequest->additional_jobs || $serviceRequest->service_value > 0 || $serviceRequest->parts_value > 0)
-                    <div class="sm:col-span-2 p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
-                        <div class="flex items-center justify-between border-b border-emerald-200/70 pb-1.5">
-                            <span class="font-bold text-emerald-950 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
-                                <i class="fa-solid fa-plus-circle text-emerald-600"></i>
-                                <span>Work Scope & Cost Breakdown</span>
+                    <!-- Itemized Work Order Table (Multi-Job / Multiple Services / Parts) -->
+                    <div class="sm:col-span-2 overflow-hidden border border-slate-200 rounded-xl">
+                        <div class="p-3 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                            <span class="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                                <i class="fa-solid fa-list-check text-emerald-600"></i>
+                                <span>Itemized Work Order & Line Items ({{ count($serviceRequest->items) }})</span>
                             </span>
-                            <span class="text-[11px] font-semibold text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
-                                20% Service Margin &bull; 10% Parts Margin
-                            </span>
+                            <span class="text-[11px] font-semibold text-slate-600">Total Quantity: <strong>{{ $serviceRequest->quantity ?: count($serviceRequest->items) }}</strong></span>
                         </div>
-                        @if($serviceRequest->additional_jobs)
-                        <p class="text-emerald-950 font-medium whitespace-pre-line text-xs font-semibold">{{ $serviceRequest->additional_jobs }}</p>
-                        @endif
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-emerald-200/60 text-xs">
-                            <div class="bg-white p-2 rounded-lg border border-emerald-100">
-                                <span class="text-slate-400 block text-[10px]">Service Value:</span>
-                                <strong class="font-mono text-slate-800">Rs. {{ number_format($serviceRequest->service_value, 2) }}</strong>
-                                <span class="text-[9px] text-emerald-600 block">(Commission: Rs. {{ number_format($serviceRequest->service_value * 0.20, 2) }})</span>
-                            </div>
-                            <div class="bg-white p-2 rounded-lg border border-emerald-100">
-                                <span class="text-slate-400 block text-[10px]">Parts Value:</span>
-                                <strong class="font-mono text-slate-800">Rs. {{ number_format($serviceRequest->parts_value, 2) }}</strong>
-                                <span class="text-[9px] text-blue-600 block">(Commission: Rs. {{ number_format($serviceRequest->parts_value * 0.10, 2) }})</span>
-                            </div>
-                            <div class="bg-white p-2 rounded-lg border border-emerald-100">
-                                <span class="text-slate-400 block text-[10px]">Total Commission:</span>
-                                <strong class="font-mono text-emerald-700">Rs. {{ number_format($serviceRequest->commission_amount, 2) }}</strong>
-                            </div>
-                            <div class="bg-white p-2 rounded-lg border border-emerald-100">
-                                <span class="text-slate-400 block text-[10px]">Technician Wage:</span>
-                                <strong class="font-mono text-blue-700">Rs. {{ number_format($serviceRequest->worker_payment, 2) }}</strong>
-                            </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
+                                        <th class="p-2.5 text-center w-8">#</th>
+                                        <th class="p-2.5">Service Job / Spare Part Description</th>
+                                        <th class="p-2.5">Nature / Type</th>
+                                        <th class="p-2.5 text-center w-16">Qty</th>
+                                        <th class="p-2.5 text-right w-24">Unit Rate</th>
+                                        <th class="p-2.5 text-right w-24">Worker Wage</th>
+                                        <th class="p-2.5 text-right w-24">Brand Rate</th>
+                                        <th class="p-2.5 text-right w-28">Customer Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @foreach($serviceRequest->items as $idx => $item)
+                                    <tr class="hover:bg-slate-50 transition {{ ($item['job_nature'] ?? '') === 'free_installation' ? 'bg-amber-50/30' : (($item['job_nature'] ?? '') === 'parts' ? 'bg-blue-50/30' : '') }}">
+                                        <td class="p-2.5 text-center font-bold text-slate-400">{{ $idx + 1 }}</td>
+                                        <td class="p-2.5 font-bold text-slate-800">
+                                            {{ $item['title'] ?? 'Service' }}
+                                        </td>
+                                        <td class="p-2.5">
+                                            @php
+                                                $nature = $item['job_nature'] ?? 'standard';
+                                            @endphp
+                                            @if($nature === 'free_installation')
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Free Install</span>
+                                            @elseif($nature === 'parts')
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Parts / Material</span>
+                                            @elseif($nature === 'brand_after_sale')
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">Brand After-Sale</span>
+                                            @else
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Cash Job</span>
+                                            @endif
+                                        </td>
+                                        <td class="p-2.5 text-center font-bold text-slate-900">{{ $item['quantity'] ?? 1 }}</td>
+                                        <td class="p-2.5 text-right font-mono text-slate-700">Rs. {{ number_format($item['unit_price'] ?? 0, 2) }}</td>
+                                        <td class="p-2.5 text-right font-mono text-blue-700">Rs. {{ number_format($item['unit_wage'] ?? 0, 2) }}</td>
+                                        <td class="p-2.5 text-right font-mono text-amber-700">{{ !empty($item['brand_rate']) ? 'Rs. ' . number_format($item['brand_rate'], 2) : '-' }}</td>
+                                        <td class="p-2.5 text-right font-mono font-bold text-slate-900">Rs. {{ number_format($item['total_price'] ?? 0, 2) }}</td>
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                                <tfoot>
+                                    <tr class="bg-slate-900 text-white font-bold text-xs">
+                                        <td colspan="3" class="p-3 uppercase tracking-wider text-slate-300">Grand Total Consolidated</td>
+                                        <td class="p-3 text-center text-emerald-400">{{ $serviceRequest->quantity ?: count($serviceRequest->items) }}</td>
+                                        <td class="p-3 text-right text-slate-400">-</td>
+                                        <td class="p-3 text-right text-blue-400 font-mono">Rs. {{ number_format($serviceRequest->worker_payment, 2) }}</td>
+                                        <td class="p-3 text-right text-amber-400 font-mono">{{ $serviceRequest->brand_rate > 0 ? 'Rs. ' . number_format($serviceRequest->brand_rate, 2) : '-' }}</td>
+                                        <td class="p-3 text-right text-emerald-400 font-mono font-black text-sm">Rs. {{ number_format($serviceRequest->customer_price, 2) }}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
                         </div>
                     </div>
-                    @endif
 
                     <div class="sm:col-span-2 p-3.5 bg-slate-50 rounded-xl border border-slate-100">
                         <span class="text-slate-400 font-semibold block mb-0.5">Service Address</span>

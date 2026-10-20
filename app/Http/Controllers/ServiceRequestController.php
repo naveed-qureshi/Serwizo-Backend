@@ -95,7 +95,7 @@ class ServiceRequestController extends Controller
     {
         $cities = City::with('areas')->where('status', 'active')->get();
         $categories = Category::with('subCategories')->where('status', 'active')->get();
-        $jobs = ServiceJob::with('prices')->where('status', 'active')->get();
+        $jobs = ServiceJob::with(['brand', 'prices', 'category'])->where('status', 'active')->orderBy('title')->get();
         $brands = \App\Models\Brand::where('status', 'active')->orderBy('name')->get();
 
         return view('service_requests.create', compact('cities', 'categories', 'jobs', 'brands'));
@@ -113,23 +113,24 @@ class ServiceRequestController extends Controller
             // Brand & Free Installation & After Sales
             'is_free_installation' => ['nullable', 'boolean'],
             'is_brand_job' => ['nullable', 'boolean'],
-            'job_nature' => ['nullable', 'string', 'in:standard,free_installation,brand_after_sale'],
+            'job_nature' => ['nullable', 'string', 'in:standard,free_installation,brand_after_sale,parts'],
             'warranty_coverage' => ['nullable', 'string', 'in:out_of_warranty,in_warranty,partial_warranty'],
             'brand_id' => ['nullable', 'exists:brands,id'],
             'model_number' => ['nullable', 'string', 'max:100'],
             'serial_number' => ['nullable', 'string', 'max:100'],
             'quantity' => ['nullable', 'integer', 'min:1'],
             'brand_rate' => ['nullable', 'numeric', 'min:0'],
-            'additional_jobs' => ['nullable', 'string'],
+            'additional_jobs' => ['nullable'],
+            'items' => ['nullable'],
             'service_value' => ['nullable', 'numeric', 'min:0'],
             'parts_value' => ['nullable', 'numeric', 'min:0'],
 
             // Job Details
             'city_id' => ['required', 'exists:cities,id'],
             'area_id' => ['nullable', 'exists:areas,id'],
-            'category_id' => ['required', 'exists:categories,id'],
+            'category_id' => ['nullable', 'exists:categories,id'],
             'sub_category_id' => ['nullable', 'exists:sub_categories,id'],
-            'service_job_id' => ['required', 'exists:service_jobs,id'],
+            'service_job_id' => ['nullable', 'exists:service_jobs,id'],
             'service_address' => ['required', 'string', 'max:500'],
             'location_notes' => ['nullable', 'string', 'max:255'],
             'customer_complaint' => ['nullable', 'string'],
@@ -144,7 +145,7 @@ class ServiceRequestController extends Controller
             'commission_amount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        return DB::transaction(function () use ($validated) {
+        return DB::transaction(function () use ($validated, $request) {
             // 1. Resolve Customer
             if (!empty($validated['customer_id'])) {
                 $customer = Customer::findOrFail($validated['customer_id']);
@@ -174,34 +175,128 @@ class ServiceRequestController extends Controller
                 }
             }
 
-            // 2. Resolve Pricing & Job Nature
-            $job = ServiceJob::findOrFail($validated['service_job_id']);
-            $defaultPricing = $job->getPriceForCity($validated['city_id']);
-
-            $jobNature = $validated['job_nature'] ?? ($job->is_free_installation ? 'free_installation' : ($job->is_brand_job ? 'brand_after_sale' : 'standard'));
-            $isFreeInstallation = ($jobNature === 'free_installation') || !empty($validated['is_free_installation']);
-            $isBrandJob = ($jobNature === 'brand_after_sale' || $isFreeInstallation || !empty($validated['brand_id']) || $job->is_brand_job);
-            $brandId = $validated['brand_id'] ?? ($isBrandJob ? $job->brand_id : null);
-            $brandRate = (float)($validated['brand_rate'] ?? ($isFreeInstallation ? ($job->brand_rate ?: 0) : 0));
-            $serviceValue = (float)($validated['service_value'] ?? 0);
-            $partsValue = (float)($validated['parts_value'] ?? 0);
-
-            if ($isFreeInstallation) {
-                $custPrice = 0.00;
-                $wrkPayment = $validated['worker_payment'] ?? $defaultPricing['worker_payment'];
-                $commission = max(0, $brandRate - $wrkPayment);
-            } elseif ($serviceValue > 0 || $partsValue > 0) {
-                // Calculated from service value (20% commission) and parts value (10% commission)
-                $calculatedCommission = ($serviceValue * 0.20) + ($partsValue * 0.10);
-                $commission = $validated['commission_amount'] ?? $calculatedCommission;
-                $custPrice = $validated['customer_price'] ?? ($serviceValue + $partsValue);
-                $wrkPayment = $validated['worker_payment'] ?? max(0, ($custPrice + $brandRate) - $commission);
-            } else {
-                $custPrice = $validated['customer_price'] ?? $defaultPricing['customer_price'];
-                $wrkPayment = $validated['worker_payment'] ?? $defaultPricing['worker_payment'];
-                $commission = $validated['commission_amount'] ?? ($custPrice - $wrkPayment);
-                if ($commission < 0) $commission = 0;
+            // 2. Parse Multi-Job Line Items if submitted
+            $rawItems = $request->input('items') ?? $request->input('additional_jobs');
+            $items = [];
+            if (is_string($rawItems)) {
+                $items = json_decode($rawItems, true) ?: [];
+            } elseif (is_array($rawItems)) {
+                $items = $rawItems;
             }
+
+            $primaryJobId = $validated['service_job_id'] ?? null;
+            $primaryCategoryId = $validated['category_id'] ?? null;
+            $primarySubCategoryId = $validated['sub_category_id'] ?? null;
+
+            if (!empty($items)) {
+                $totalCustPrice = 0;
+                $totalWrkPayment = 0;
+                $totalBrandRate = 0;
+                $totalQty = 0;
+                $serviceVal = 0;
+                $partsVal = 0;
+                $hasFreeInstall = false;
+                $hasBrand = false;
+
+                foreach ($items as &$item) {
+                    $qty = max(1, (int)($item['quantity'] ?? 1));
+                    $item['quantity'] = $qty;
+                    $uPrice = (float)($item['unit_price'] ?? 0);
+                    $uWage = (float)($item['unit_wage'] ?? 0);
+                    $bRate = (float)($item['brand_rate'] ?? 0);
+                    $nature = $item['job_nature'] ?? 'standard';
+
+                    if ($nature === 'free_installation') {
+                        $hasFreeInstall = true;
+                        $hasBrand = true;
+                        $uPrice = 0;
+                        $item['unit_price'] = 0;
+                        $item['total_price'] = 0;
+                        $item['total_wage'] = $qty * $uWage;
+                        $item['commission'] = max(0, ($qty * $bRate) - $item['total_wage']);
+                        $totalBrandRate += ($qty * $bRate);
+                        $totalWrkPayment += $item['total_wage'];
+                    } elseif ($nature === 'parts') {
+                        $item['total_price'] = $qty * $uPrice;
+                        $partsVal += $item['total_price'];
+                        $totalCustPrice += $item['total_price'];
+                        if ($uWage > 0) {
+                            $item['total_wage'] = $qty * $uWage;
+                        } else {
+                            $item['commission'] = round($item['total_price'] * 0.10, 2);
+                            $item['total_wage'] = max(0, $item['total_price'] - $item['commission']);
+                        }
+                        $item['commission'] = max(0, $item['total_price'] - $item['total_wage']);
+                        $totalWrkPayment += $item['total_wage'];
+                    } else {
+                        $item['total_price'] = $qty * $uPrice;
+                        $item['total_wage'] = $qty * $uWage;
+                        $item['commission'] = max(0, $item['total_price'] - $item['total_wage']);
+                        $serviceVal += $item['total_price'];
+                        $totalCustPrice += $item['total_price'];
+                        $totalWrkPayment += $item['total_wage'];
+                    }
+                    $totalQty += $qty;
+
+                    if (!$primaryJobId && !empty($item['job_id'])) {
+                        $primaryJobId = (int)$item['job_id'];
+                    }
+                    if (!$primaryCategoryId && !empty($item['category_id'])) {
+                        $primaryCategoryId = (int)$item['category_id'];
+                    }
+                }
+                unset($item);
+
+                $custPrice = $totalCustPrice;
+                $wrkPayment = $totalWrkPayment;
+                $brandRate = $totalBrandRate;
+                $commission = max(0, ($custPrice + $brandRate) - $wrkPayment);
+                $serviceValue = $serviceVal;
+                $partsValue = $partsVal;
+                $isFreeInstallation = $hasFreeInstall || !empty($validated['is_free_installation']);
+                $isBrandJob = $hasBrand || !empty($validated['is_brand_job']) || !empty($validated['brand_id']);
+                $jobNature = $isFreeInstallation ? 'free_installation' : ($isBrandJob ? 'brand_after_sale' : 'standard');
+                $brandId = $validated['brand_id'] ?? null;
+                $quantity = $totalQty;
+                $additionalJobsData = $items;
+            } else {
+                // Fallback for single job
+                $primaryJobId = $validated['service_job_id'] ?? ServiceJob::first()?->id;
+                $job = ServiceJob::findOrFail($primaryJobId);
+                $defaultPricing = $job->getPriceForCity($validated['city_id']);
+
+                $jobNature = $validated['job_nature'] ?? ($job->is_free_installation ? 'free_installation' : ($job->is_brand_job ? 'brand_after_sale' : 'standard'));
+                $isFreeInstallation = ($jobNature === 'free_installation') || !empty($validated['is_free_installation']);
+                $isBrandJob = ($jobNature === 'brand_after_sale' || $isFreeInstallation || !empty($validated['brand_id']) || $job->is_brand_job);
+                $brandId = $validated['brand_id'] ?? ($isBrandJob ? $job->brand_id : null);
+                $brandRate = (float)($validated['brand_rate'] ?? ($isFreeInstallation ? ($job->brand_rate ?: 0) : 0));
+                $serviceValue = (float)($validated['service_value'] ?? 0);
+                $partsValue = (float)($validated['parts_value'] ?? 0);
+                $quantity = (int)($validated['quantity'] ?? 1);
+
+                if ($isFreeInstallation) {
+                    $custPrice = 0.00;
+                    $wrkPayment = $validated['worker_payment'] ?? $defaultPricing['worker_payment'];
+                    $commission = max(0, $brandRate - $wrkPayment);
+                } elseif ($serviceValue > 0 || $partsValue > 0) {
+                    $calculatedCommission = ($serviceValue * 0.20) + ($partsValue * 0.10);
+                    $commission = $validated['commission_amount'] ?? $calculatedCommission;
+                    $custPrice = $validated['customer_price'] ?? ($serviceValue + $partsValue);
+                    $wrkPayment = $validated['worker_payment'] ?? max(0, ($custPrice + $brandRate) - $commission);
+                } else {
+                    $custPrice = $validated['customer_price'] ?? $defaultPricing['customer_price'];
+                    $wrkPayment = $validated['worker_payment'] ?? $defaultPricing['worker_payment'];
+                    $commission = $validated['commission_amount'] ?? ($custPrice - $wrkPayment);
+                    if ($commission < 0) $commission = 0;
+                }
+                $additionalJobsData = null;
+                $primaryCategoryId = $validated['category_id'] ?? $job->category_id;
+                $primarySubCategoryId = $validated['sub_category_id'] ?? $job->sub_category_id;
+            }
+
+            // Fallback for primary category / job if missing
+            if (!$primaryJobId) $primaryJobId = ServiceJob::first()?->id;
+            if (!$primaryCategoryId) $primaryCategoryId = ServiceJob::find($primaryJobId)?->category_id ?? Category::first()?->id;
 
             // 3. Create Service Request
             $srNumber = $this->srService->generateSrNumber();
@@ -211,14 +306,14 @@ class ServiceRequestController extends Controller
                 'customer_id' => $customer->id,
                 'city_id' => $validated['city_id'],
                 'area_id' => $validated['area_id'] ?? null,
-                'category_id' => $validated['category_id'],
-                'sub_category_id' => $validated['sub_category_id'] ?? null,
-                'service_job_id' => $job->id,
+                'category_id' => $primaryCategoryId,
+                'sub_category_id' => $primarySubCategoryId,
+                'service_job_id' => $primaryJobId,
                 'service_address' => $validated['service_address'],
                 'location_notes' => $validated['location_notes'] ?? null,
                 'customer_complaint' => $validated['customer_complaint'] ?? null,
                 'special_instructions' => $validated['special_instructions'] ?? null,
-                'additional_jobs' => $validated['additional_jobs'] ?? null,
+                'additional_jobs' => $additionalJobsData,
                 'service_value' => $serviceValue,
                 'parts_value' => $partsValue,
                 'job_nature' => $jobNature,
@@ -232,7 +327,7 @@ class ServiceRequestController extends Controller
                 'brand_id' => $brandId,
                 'model_number' => $validated['model_number'] ?? null,
                 'serial_number' => $validated['serial_number'] ?? null,
-                'quantity' => $validated['quantity'] ?? 1,
+                'quantity' => $quantity,
                 'brand_rate' => $brandRate,
                 'customer_price' => $custPrice,
                 'worker_payment' => $wrkPayment,
@@ -348,7 +443,7 @@ class ServiceRequestController extends Controller
         $cities = City::where('status', 'active')->get();
         $categories = Category::with('subCategories')->where('status', 'active')->get();
         $subCategories = SubCategory::where('category_id', $serviceRequest->category_id)->where('status', 'active')->get();
-        $jobs = ServiceJob::where('category_id', $serviceRequest->category_id)->where('status', 'active')->get();
+        $jobs = ServiceJob::with(['brand', 'prices', 'category'])->where('status', 'active')->orderBy('title')->get();
         $brands = \App\Models\Brand::where('status', 'active')->orderBy('name')->get();
         $workers = Worker::where('status', 'active')->get();
 
@@ -370,21 +465,22 @@ class ServiceRequestController extends Controller
             'customer_phone' => ['required', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email', 'max:150'],
             'city_id' => ['required', 'exists:cities,id'],
-            'category_id' => ['required', 'exists:categories,id'],
+            'category_id' => ['nullable', 'exists:categories,id'],
             'sub_category_id' => ['nullable', 'exists:sub_categories,id'],
-            'service_job_id' => ['required', 'exists:service_jobs,id'],
+            'service_job_id' => ['nullable', 'exists:service_jobs,id'],
             
             // Brand & Job details
             'is_free_installation' => ['nullable', 'boolean'],
             'is_brand_job' => ['nullable', 'boolean'],
-            'job_nature' => ['nullable', 'string', 'in:standard,free_installation,brand_after_sale'],
+            'job_nature' => ['nullable', 'string', 'in:standard,free_installation,brand_after_sale,parts'],
             'warranty_coverage' => ['nullable', 'string', 'in:out_of_warranty,in_warranty,partial_warranty'],
             'brand_id' => ['nullable', 'exists:brands,id'],
             'model_number' => ['nullable', 'string', 'max:100'],
             'serial_number' => ['nullable', 'string', 'max:100'],
             'quantity' => ['nullable', 'integer', 'min:1'],
             'brand_rate' => ['nullable', 'numeric', 'min:0'],
-            'additional_jobs' => ['nullable', 'string'],
+            'additional_jobs' => ['nullable'],
+            'items' => ['nullable'],
             'service_value' => ['nullable', 'numeric', 'min:0'],
             'parts_value' => ['nullable', 'numeric', 'min:0'],
             
@@ -404,15 +500,15 @@ class ServiceRequestController extends Controller
                 'on_the_way', 'arrived', 'in_progress', 'completed', 'verified', 'cancelled'
             ])],
             'current_worker_id' => ['nullable', 'exists:workers,id'],
-            'customer_price' => ['required', 'numeric', 'min:0'],
-            'worker_payment' => ['required', 'numeric', 'min:0'],
-            'commission_amount' => ['required', 'numeric', 'min:0'],
+            'customer_price' => ['nullable', 'numeric', 'min:0'],
+            'worker_payment' => ['nullable', 'numeric', 'min:0'],
+            'commission_amount' => ['nullable', 'numeric', 'min:0'],
             'customer_complaint' => ['nullable', 'string'],
             'special_instructions' => ['nullable', 'string'],
             'cancellation_reason' => ['nullable', 'string', 'max:255'],
         ]);
 
-        return DB::transaction(function () use ($validated, $serviceRequest) {
+        return DB::transaction(function () use ($validated, $request, $serviceRequest) {
             // 1. Update customer profile info if changed
             if ($serviceRequest->customer) {
                 $serviceRequest->customer->update([
@@ -440,9 +536,107 @@ class ServiceRequestController extends Controller
                     ->update(['status' => 'cancelled']);
             }
 
-            $jobNature = $validated['job_nature'] ?? (!empty($validated['is_free_installation']) ? 'free_installation' : 'standard');
-            $isFreeInstallation = ($jobNature === 'free_installation') || !empty($validated['is_free_installation']);
-            $isBrandJob = ($jobNature === 'brand_after_sale' || $isFreeInstallation || !empty($validated['brand_id']));
+            // 3. Parse Multi-Job Line Items if submitted
+            $rawItems = $request->input('items') ?? $request->input('additional_jobs');
+            $items = [];
+            if (is_string($rawItems)) {
+                $items = json_decode($rawItems, true) ?: [];
+            } elseif (is_array($rawItems)) {
+                $items = $rawItems;
+            }
+
+            $primaryJobId = $validated['service_job_id'] ?? $serviceRequest->service_job_id;
+            $primaryCategoryId = $validated['category_id'] ?? $serviceRequest->category_id;
+            $primarySubCategoryId = $validated['sub_category_id'] ?? $serviceRequest->sub_category_id;
+
+            if (!empty($items)) {
+                $totalCustPrice = 0;
+                $totalWrkPayment = 0;
+                $totalBrandRate = 0;
+                $totalQty = 0;
+                $serviceVal = 0;
+                $partsVal = 0;
+                $hasFreeInstall = false;
+                $hasBrand = false;
+
+                foreach ($items as &$item) {
+                    $qty = max(1, (int)($item['quantity'] ?? 1));
+                    $item['quantity'] = $qty;
+                    $uPrice = (float)($item['unit_price'] ?? 0);
+                    $uWage = (float)($item['unit_wage'] ?? 0);
+                    $bRate = (float)($item['brand_rate'] ?? 0);
+                    $nature = $item['job_nature'] ?? 'standard';
+
+                    if ($nature === 'free_installation') {
+                        $hasFreeInstall = true;
+                        $hasBrand = true;
+                        $uPrice = 0;
+                        $item['unit_price'] = 0;
+                        $item['total_price'] = 0;
+                        $item['total_wage'] = $qty * $uWage;
+                        $item['commission'] = max(0, ($qty * $bRate) - $item['total_wage']);
+                        $totalBrandRate += ($qty * $bRate);
+                        $totalWrkPayment += $item['total_wage'];
+                    } elseif ($nature === 'parts') {
+                        $item['total_price'] = $qty * $uPrice;
+                        $partsVal += $item['total_price'];
+                        $totalCustPrice += $item['total_price'];
+                        if ($uWage > 0) {
+                            $item['total_wage'] = $qty * $uWage;
+                        } else {
+                            $item['commission'] = round($item['total_price'] * 0.10, 2);
+                            $item['total_wage'] = max(0, $item['total_price'] - $item['commission']);
+                        }
+                        $item['commission'] = max(0, $item['total_price'] - $item['total_wage']);
+                        $totalWrkPayment += $item['total_wage'];
+                    } else {
+                        $item['total_price'] = $qty * $uPrice;
+                        $item['total_wage'] = $qty * $uWage;
+                        $item['commission'] = max(0, $item['total_price'] - $item['total_wage']);
+                        $serviceVal += $item['total_price'];
+                        $totalCustPrice += $item['total_price'];
+                        $totalWrkPayment += $item['total_wage'];
+                    }
+                    $totalQty += $qty;
+
+                    if (!$primaryJobId && !empty($item['job_id'])) {
+                        $primaryJobId = (int)$item['job_id'];
+                    }
+                    if (!$primaryCategoryId && !empty($item['category_id'])) {
+                        $primaryCategoryId = (int)$item['category_id'];
+                    }
+                }
+                unset($item);
+
+                $custPrice = $totalCustPrice;
+                $wrkPayment = $totalWrkPayment;
+                $brandRate = $totalBrandRate;
+                $commission = max(0, ($custPrice + $brandRate) - $wrkPayment);
+                $serviceValue = $serviceVal;
+                $partsValue = $partsVal;
+                $isFreeInstallation = $hasFreeInstall || !empty($validated['is_free_installation']);
+                $isBrandJob = $hasBrand || !empty($validated['is_brand_job']) || !empty($validated['brand_id']);
+                $jobNature = $isFreeInstallation ? 'free_installation' : ($isBrandJob ? 'brand_after_sale' : 'standard');
+                $brandId = $validated['brand_id'] ?? $serviceRequest->brand_id;
+                $quantity = $totalQty;
+                $additionalJobsData = $items;
+            } else {
+                $custPrice = $validated['customer_price'] ?? $serviceRequest->customer_price;
+                $wrkPayment = $validated['worker_payment'] ?? $serviceRequest->worker_payment;
+                $commission = $validated['commission_amount'] ?? $serviceRequest->commission_amount;
+                $brandRate = $validated['brand_rate'] ?? $serviceRequest->brand_rate;
+                $serviceValue = $validated['service_value'] ?? $serviceRequest->service_value;
+                $partsValue = $validated['parts_value'] ?? $serviceRequest->parts_value;
+                $isFreeInstallation = !empty($validated['is_free_installation']);
+                $isBrandJob = !empty($validated['is_brand_job']) || !empty($validated['brand_id']);
+                $jobNature = $validated['job_nature'] ?? $serviceRequest->job_nature;
+                $brandId = $validated['brand_id'] ?? $serviceRequest->brand_id;
+                $quantity = $validated['quantity'] ?? $serviceRequest->quantity;
+                $additionalJobsData = $serviceRequest->additional_jobs;
+            }
+
+            if (!$primaryJobId) $primaryJobId = $serviceRequest->service_job_id ?: ServiceJob::first()?->id;
+            if (!$primaryCategoryId) $primaryCategoryId = $serviceRequest->category_id ?: (ServiceJob::find($primaryJobId)?->category_id ?? Category::first()?->id);
 
             $assignedAt = !empty($validated['assigned_at']) ? Carbon::parse($validated['assigned_at']) : null;
             $startedAt = !empty($validated['started_at']) ? Carbon::parse($validated['started_at']) : null;
@@ -462,21 +656,21 @@ class ServiceRequestController extends Controller
                 }
             }
 
-            // 3. Update Service Request record
+            // 4. Update Service Request record
             $serviceRequest->update([
                 'city_id' => $validated['city_id'],
-                'category_id' => $validated['category_id'],
-                'sub_category_id' => $validated['sub_category_id'] ?? null,
-                'service_job_id' => $validated['service_job_id'],
+                'category_id' => $primaryCategoryId,
+                'sub_category_id' => $primarySubCategoryId,
+                'service_job_id' => $primaryJobId,
                 'is_free_installation' => $isFreeInstallation,
                 'is_brand_job' => $isBrandJob,
                 'job_nature' => $jobNature,
                 'warranty_coverage' => $validated['warranty_coverage'] ?? null,
-                'brand_id' => $validated['brand_id'] ?? null,
+                'brand_id' => $brandId,
                 'model_number' => $validated['model_number'] ?? null,
                 'serial_number' => $validated['serial_number'] ?? null,
-                'quantity' => $validated['quantity'] ?? 1,
-                'brand_rate' => $validated['brand_rate'] ?? 0,
+                'quantity' => $quantity,
+                'brand_rate' => $brandRate,
                 'service_address' => $validated['service_address'],
                 'location_notes' => $validated['location_notes'] ?? null,
                 'latitude' => $validated['latitude'] ?? null,
@@ -489,14 +683,14 @@ class ServiceRequestController extends Controller
                 'verified_at' => $verifiedAt ?? $serviceRequest->verified_at,
                 'duration_minutes' => $durationMinutes,
                 'request_source' => $validated['request_source'],
-                'customer_price' => $validated['customer_price'],
-                'worker_payment' => $validated['worker_payment'],
-                'commission_amount' => $validated['commission_amount'],
-                'service_value' => $validated['service_value'] ?? 0,
-                'parts_value' => $validated['parts_value'] ?? 0,
+                'customer_price' => $custPrice,
+                'worker_payment' => $wrkPayment,
+                'commission_amount' => $commission,
+                'service_value' => $serviceValue,
+                'parts_value' => $partsValue,
                 'customer_complaint' => $validated['customer_complaint'] ?? null,
                 'special_instructions' => $validated['special_instructions'] ?? null,
-                'additional_jobs' => $validated['additional_jobs'] ?? null,
+                'additional_jobs' => $additionalJobsData,
                 'cancellation_reason' => $validated['cancellation_reason'] ?? null,
             ]);
 
