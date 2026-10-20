@@ -760,10 +760,11 @@ class ServiceRequestController extends Controller
     {
         $request->validate([
             'images' => ['nullable', 'array'],
-            'images.*' => ['image', 'mimes:jpeg,png,jpg,webp', 'max:10240'],
-            'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:10240'],
-            'proof_type' => ['required', 'string', 'in:indoor_serial,outdoor_serial,warranty_card,indoor_unit,outdoor_unit,indoor_box_serial,outdoor_box_serial,leakage_test,serial_barcode,model_plate,completion_proof,customer_signature,general_proof,other'],
+            'images.*' => ['image', 'mimes:jpeg,png,jpg,webp', 'max:15360'],
+            'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:15360'],
+            'proof_type' => ['nullable', 'string', 'max:100'],
             'caption' => ['nullable', 'string', 'max:255'],
+            'slot_number' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
         $uploadedFiles = [];
@@ -777,37 +778,69 @@ class ServiceRequestController extends Controller
             return back()->with('error', 'Please select at least one image file to upload.');
         }
 
-        $proofTypeLabels = [
-            'indoor_serial' => 'a. Indoor Serial',
-            'outdoor_serial' => 'b. Outdoor Serial',
-            'warranty_card' => 'c. Filled Warranty Card',
-            'indoor_unit' => 'd. Indoor Installed Unit',
-            'outdoor_unit' => 'e. Outdoor Installed Unit',
-            'indoor_box_serial' => 'f. Indoor Box Serial Number',
-            'outdoor_box_serial' => 'g. Outdoor Box Serial Number',
-            'leakage_test' => 'h. Leakage Test',
-            'serial_barcode' => 'Serial Number Barcode',
-            'model_plate' => 'Model Rating Plate',
-            'completion_proof' => 'Completed Work / Installation Proof',
-            'customer_signature' => 'Customer Acceptance',
-            'general_proof' => 'General Service Photo',
-            'other' => 'Additional Proof',
-        ];
-
-        $defaultCaption = $request->caption ?: ($proofTypeLabels[$request->proof_type] ?? 'Installation Proof');
         $workerId = $serviceRequest->current_worker_id ?: (\App\Models\Worker::first()?->id ?: 1);
 
-        foreach ($uploadedFiles as $file) {
+        // Case 1: Uploading directly into a specific slot number (e.g. Picture 2)
+        if ($request->filled('slot_number') && count($uploadedFiles) === 1) {
+            $slotNum = (int)$request->input('slot_number');
+            $slotKey = 'picture_' . $slotNum;
+            $caption = 'Picture ' . $slotNum;
+
+            // Remove existing proof in this specific slot if already present
+            $existing = JobProof::where('service_request_id', $serviceRequest->id)
+                ->where('proof_type', $slotKey)
+                ->first();
+
+            if ($existing) {
+                if ($existing->image_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($existing->image_path)) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($existing->image_path);
+                }
+                $existing->delete();
+            }
+
+            $file = $uploadedFiles[0];
             $path = $file->store("proofs/{$serviceRequest->sr_number}", 'public');
 
             JobProof::create([
                 'service_request_id' => $serviceRequest->id,
                 'worker_id' => $workerId,
-                'proof_type' => $request->proof_type,
+                'proof_type' => $slotKey,
                 'image_path' => $path,
-                'caption' => $defaultCaption,
+                'caption' => $caption,
                 'created_at' => now(),
             ]);
+        } else {
+            // Case 2: Bulk upload or sequential filling
+            $existingProofs = JobProof::where('service_request_id', $serviceRequest->id)->get();
+            $usedSlots = [];
+            foreach ($existingProofs as $ep) {
+                if (preg_match('/picture_(\d+)/', $ep->proof_type ?? '', $m)) {
+                    $usedSlots[] = (int)$m[1];
+                }
+            }
+
+            $nextSlot = 1;
+            foreach ($uploadedFiles as $file) {
+                while (in_array($nextSlot, $usedSlots)) {
+                    $nextSlot++;
+                }
+                $slotKey = 'picture_' . $nextSlot;
+                $caption = 'Picture ' . $nextSlot;
+                $usedSlots[] = $nextSlot;
+
+                $path = $file->store("proofs/{$serviceRequest->sr_number}", 'public');
+
+                JobProof::create([
+                    'service_request_id' => $serviceRequest->id,
+                    'worker_id' => $workerId,
+                    'proof_type' => $slotKey,
+                    'image_path' => $path,
+                    'caption' => $caption,
+                    'created_at' => now(),
+                ]);
+
+                $nextSlot++;
+            }
         }
 
         AuditLogService::log(
@@ -817,7 +850,7 @@ class ServiceRequestController extends Controller
             description: "Uploaded " . count($uploadedFiles) . " proof photo(s) for {$serviceRequest->sr_number}"
         );
 
-        return back()->with('success', count($uploadedFiles) . ' proof photo(s) uploaded successfully.');
+        return back()->with('success', count($uploadedFiles) . ' photo(s) uploaded successfully.');
     }
 
     /**

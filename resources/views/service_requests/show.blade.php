@@ -286,9 +286,9 @@
                 </div>
             </div>
 
-            <!-- Job Proof Images Gallery (Sequence a to h) -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <!-- Job Proof Images Section (List Format with Small Size Previews & No Dropdown) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
+                <div class="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-3">
                     <div class="flex items-center space-x-2">
                         <i class="fa-solid fa-camera text-emerald-600 text-base"></i>
                         <span class="text-sm font-bold text-slate-900 uppercase tracking-wider">Installation & Work Proof Photos</span>
@@ -296,68 +296,142 @@
                             {{ $serviceRequest->proofs->count() }} Uploaded
                         </span>
                     </div>
-                    <button type="button" @click="uploadProofModal = true" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5">
-                        <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span>+ Upload Proof Photos</span>
-                    </button>
+
+                    <!-- Direct Multiple Photos Upload -->
+                    <form action="{{ route('service-requests.proofs.upload', $serviceRequest) }}" method="POST" enctype="multipart/form-data" class="inline">
+                        @csrf
+                        <label class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>+ Upload Multiple Photos</span>
+                            <input type="file" name="images[]" multiple accept="image/*" class="sr-only" onchange="this.form.submit()">
+                        </label>
+                    </form>
+                </div>
+
+                <!-- Fast Multi-Upload Notice Banner -->
+                <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center space-x-2.5 text-slate-600">
+                        <i class="fa-solid fa-circle-info text-emerald-600 text-sm"></i>
+                        <span>Select all photos (e.g. 4 photos) at once — they will automatically populate as Picture 1, Picture 2, Picture 3...</span>
+                    </div>
                 </div>
 
                 @php
-                    $proofLabels = [
-                        'indoor_serial' => 'a. Indoor Serial',
-                        'outdoor_serial' => 'b. Outdoor Serial',
-                        'warranty_card' => 'c. Filled Warranty Card',
-                        'indoor_unit' => 'd. Indoor Installed Unit',
-                        'outdoor_unit' => 'e. Outdoor Installed Unit',
-                        'indoor_box_serial' => 'f. Indoor Box Serial Number',
-                        'outdoor_box_serial' => 'g. Outdoor Box Serial Number',
-                        'leakage_test' => 'h. Leakage Test',
-                        'serial_barcode' => 'Serial Number Barcode',
-                        'model_plate' => 'Model Rating Plate',
-                        'completion_proof' => 'Completed Installation',
-                        'customer_signature' => 'Customer Signature',
-                        'general_proof' => 'General Service Photo',
-                        'other' => 'Additional Proof',
-                    ];
+                    $proofsMap = [];
+                    $otherProofs = [];
+                    foreach ($serviceRequest->proofs as $p) {
+                        if (preg_match('/picture_(\d+)/', $p->proof_type ?? '', $m)) {
+                            $proofsMap[(int)$m[1]] = $p;
+                        } else {
+                            $otherProofs[] = $p;
+                        }
+                    }
+                    $cur = 1;
+                    foreach ($otherProofs as $op) {
+                        while (isset($proofsMap[$cur])) {
+                            $cur++;
+                        }
+                        $proofsMap[$cur] = $op;
+                        $cur++;
+                    }
+
+                    $slotCount = max(8, count($proofsMap));
                 @endphp
 
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    @forelse($serviceRequest->proofs as $index => $proof)
-                    <div class="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden group relative hover:shadow-md transition">
-                        <div class="w-full h-36 bg-slate-200 overflow-hidden relative cursor-pointer" 
-                             @click="previewImgSrc = '{{ $proof->image_url }}'; previewImgTitle = 'Picture {{ $index + 1 }}'; previewProofModal = true">
-                            <img src="{{ $proof->image_url }}" alt="Picture {{ $index + 1 }}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" loading="lazy">
-                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold space-x-1">
-                                <i class="fa-solid fa-magnifying-glass-plus"></i>
-                                <span>Click to Enlarge</span>
+                <!-- Photos List with Small Size Previews -->
+                <div class="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
+                    @for($slot = 1; $slot <= $slotCount; $slot++)
+                        @php
+                            $slotProof = $proofsMap[$slot] ?? null;
+                        @endphp
+                        <div class="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/70 transition {{ $slotProof ? 'bg-white' : 'bg-slate-50/30' }}">
+                            <!-- Thumbnail & Title -->
+                            <div class="flex items-center space-x-3.5 min-w-0">
+                                @if($slotProof)
+                                    <div class="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0 cursor-pointer group"
+                                         @click="previewImgSrc = '{{ $slotProof->image_url }}'; previewImgTitle = 'Picture {{ $slot }}'; previewProofModal = true">
+                                        <img src="{{ $slotProof->image_url }}" alt="Picture {{ $slot }}" class="w-full h-full object-cover group-hover:scale-105 transition" loading="lazy">
+                                        <div class="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold">
+                                            <i class="fa-solid fa-magnifying-glass-plus"></i>
+                                        </div>
+                                    </div>
+                                @else
+                                    <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-slate-400 shrink-0">
+                                        <i class="fa-solid fa-camera text-slate-300 text-base mb-1"></i>
+                                        <span class="text-[9px] font-bold text-slate-400 uppercase">Empty</span>
+                                    </div>
+                                @endif
+
+                                <div class="space-y-1 min-w-0">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-extrabold text-slate-900 text-xs sm:text-sm">Picture {{ $slot }}</span>
+                                        @if($slotProof)
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center space-x-1">
+                                                <i class="fa-solid fa-check text-[9px]"></i>
+                                                <span>Uploaded</span>
+                                            </span>
+                                        @else
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-600">
+                                                Pending
+                                            </span>
+                                        @endif
+                                    </div>
+
+                                    @if($slotProof)
+                                        <div class="text-[11px] text-slate-400 font-mono">
+                                            <i class="fa-regular fa-clock mr-1"></i>{{ $slotProof->created_at?->format('d M, Y h:i A') }}
+                                        </div>
+                                        @if($slotProof->caption && $slotProof->caption !== 'Picture ' . $slot)
+                                            <p class="text-[11px] text-slate-600 truncate max-w-md">{{ $slotProof->caption }}</p>
+                                        @endif
+                                    @else
+                                        <p class="text-[11px] text-slate-400">No photo uploaded for slot {{ $slot }} yet</p>
+                                    @endif
+                                </div>
                             </div>
-                        </div>
-                        <div class="p-2.5 text-[10px] space-y-1">
-                            <div class="flex items-center justify-between">
-                                <span class="font-bold text-slate-800 uppercase px-1.5 py-0.5 rounded bg-slate-200 truncate">
-                                    Picture {{ $index + 1 }}
-                                </span>
-                                <form action="{{ route('service-requests.proofs.delete', $proof) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this photo?');" class="inline">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="text-rose-500 hover:text-rose-700 p-1" title="Delete Photo">
-                                        <i class="fa-solid fa-trash-can"></i>
+
+                            <!-- Action Buttons -->
+                            <div class="flex items-center space-x-2 shrink-0">
+                                @if($slotProof)
+                                    <button type="button" @click="previewImgSrc = '{{ $slotProof->image_url }}'; previewImgTitle = 'Picture {{ $slot }}'; previewProofModal = true"
+                                            class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition border border-slate-200">
+                                        <i class="fa-solid fa-eye text-slate-500 mr-1"></i>
+                                        <span class="hidden sm:inline">Enlarge</span>
                                     </button>
-                                </form>
+
+                                    <!-- Replace slot button -->
+                                    <form action="{{ route('service-requests.proofs.upload', $serviceRequest) }}" method="POST" enctype="multipart/form-data" class="inline">
+                                        @csrf
+                                        <input type="hidden" name="slot_number" value="{{ $slot }}">
+                                        <label class="px-2.5 py-1.5 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-semibold rounded-lg text-xs cursor-pointer border border-slate-200 transition inline-flex items-center space-x-1">
+                                            <i class="fa-solid fa-arrow-rotate-right text-xs"></i>
+                                            <span class="hidden sm:inline">Replace</span>
+                                            <input type="file" name="image" accept="image/*" class="sr-only" onchange="this.form.submit()">
+                                        </label>
+                                    </form>
+
+                                    <!-- Delete slot button -->
+                                    <form action="{{ route('service-requests.proofs.delete', $slotProof) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete Picture {{ $slot }}?');" class="inline">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="p-1.5 text-rose-500 hover:text-white hover:bg-rose-600 rounded-lg text-xs transition" title="Delete Picture {{ $slot }}">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </form>
+                                @else
+                                    <form action="{{ route('service-requests.proofs.upload', $serviceRequest) }}" method="POST" enctype="multipart/form-data" class="inline">
+                                        @csrf
+                                        <input type="hidden" name="slot_number" value="{{ $slot }}">
+                                        <label class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg text-xs cursor-pointer border border-emerald-200 transition flex items-center space-x-1.5 shadow-sm">
+                                            <i class="fa-solid fa-upload text-xs"></i>
+                                            <span>Upload Picture {{ $slot }}</span>
+                                            <input type="file" name="image" accept="image/*" class="sr-only" onchange="this.form.submit()">
+                                        </label>
+                                    </form>
+                                @endif
                             </div>
-                            <span class="text-slate-400 block">{{ $proof->created_at?->format('M d, Y H:i') }}</span>
-                            @if($proof->caption)
-                            <p class="text-slate-600 truncate font-medium">{{ $proof->caption }}</p>
-                            @endif
                         </div>
-                    </div>
-                    @empty
-                    <div class="col-span-2 sm:col-span-4 py-8 text-center text-xs text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
-                        <i class="fa-regular fa-images text-3xl text-slate-300 mb-2 block"></i>
-                        <p class="font-semibold text-slate-700 text-sm">No proof photos uploaded yet.</p>
-                        <p class="text-xs text-slate-400 mt-1">Uploaded work order photos will appear here or can be uploaded directly via <strong class="text-emerald-600">+ Upload Proof Photos</strong>.</p>
-                    </div>
-                    @endforelse
+                    @endfor
                 </div>
             </div>
 
@@ -668,7 +742,7 @@
         </div>
     </div>
 
-    <!-- Upload Installation / Proof Photos Modal (Sequence a to h) -->
+    <!-- Upload Installation / Proof Photos Modal -->
     <div x-show="uploadProofModal" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 flex items-center justify-center p-4" x-cloak>
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 text-xs border border-slate-200" @click.away="uploadProofModal = false">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -688,26 +762,12 @@
                     <label class="font-bold text-slate-800 block mb-1">Select Photo(s) <span class="text-rose-500">*</span></label>
                     <input type="file" name="images[]" multiple required accept="image/*"
                            class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
-                    <span class="text-[10px] text-slate-400 mt-1 block">You can select multiple photos (JPEG, PNG, WebP up to 10MB each).</span>
-                </div>
-
-                <div>
-                    <label class="font-bold text-slate-800 block mb-1">Select Picture Slot <span class="text-rose-500">*</span></label>
-                    <select name="proof_type" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none">
-                        <option value="picture_1" selected>Picture 1</option>
-                        <option value="picture_2">Picture 2</option>
-                        <option value="picture_3">Picture 3</option>
-                        <option value="picture_4">Picture 4</option>
-                        <option value="picture_5">Picture 5</option>
-                        <option value="picture_6">Picture 6</option>
-                        <option value="picture_7">Picture 7</option>
-                        <option value="picture_8">Picture 8</option>
-                    </select>
+                    <span class="text-[10px] text-slate-400 mt-1 block">You can select multiple photos (e.g. 4 photos) at once. They will automatically fill Picture 1, Picture 2, Picture 3... in the list.</span>
                 </div>
 
                 <div>
                     <label class="font-bold text-slate-800 block mb-1">Caption / Note (Optional)</label>
-                    <input type="text" name="caption" placeholder="e.g. Indoor serial barcode verified"
+                    <input type="text" name="caption" placeholder="e.g. Work completed on site"
                            class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
                 </div>
 
