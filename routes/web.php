@@ -242,5 +242,25 @@ Route::middleware('auth')->group(function () {
         Route::get('/backups', [BackupController::class, 'index'])->name('backups.index');
         Route::post('/backups', [BackupController::class, 'create'])->name('backups.create');
         Route::get('/backups/{filename}', [BackupController::class, 'download'])->name('backups.download');
+
+        // One-Click Database Migration & Cache Clear for Shared Hosting / cPanel
+        Route::get('/system/migrate', function () {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            $migOutput = \Illuminate\Support\Facades\Artisan::output();
+
+            \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+            $optOutput = \Illuminate\Support\Facades\Artisan::output();
+
+            return response("
+                <div style='font-family: Arial, sans-serif; max-width: 650px; margin: 40px auto; padding: 25px; background: #0f172a; color: #f8fafc; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);'>
+                    <h2 style='color: #10b981; margin-top: 0;'>&#10004; Database Migration & Cache Update Completed</h2>
+                    <p style='color: #94a3b8; font-size: 13px;'>The new database columns and tables were applied safely to your live server.</p>
+                    <pre style='background: #1e293b; color: #38bdf8; padding: 15px; border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: pre-wrap;'>" . htmlspecialchars($migOutput . "\n" . $optOutput) . "</pre>
+                    <div style='margin-top: 20px;'>
+                        <a href='" . route('dashboard') . "' style='display: inline-block; padding: 10px 20px; background: #10b981; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px;'>&larr; Back to Dashboard</a>
+                    </div>
+                </div>
+            ");
+        })->name('system.migrate');
     });
 });
