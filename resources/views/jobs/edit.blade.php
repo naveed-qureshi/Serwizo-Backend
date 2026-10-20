@@ -20,7 +20,7 @@
 
             <div>
                 <label class="font-semibold text-slate-700 block mb-1">Category <span class="text-rose-500">*</span></label>
-                <select name="category_id" required x-model="selectedCategory" @change="fetchSubCategories()"
+                <select name="category_id" required x-model="selectedCategory" @change="onCategoryChange()"
                         class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
                     @foreach($categories as $cat)
                     <option value="{{ $cat->id }}" {{ old('category_id', $job->category_id) == $cat->id ? 'selected' : '' }}>{{ $cat->title }}</option>
@@ -58,8 +58,8 @@
             </div>
         </div>
 
-        <!-- Corporate / Brand Association -->
-        <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+        <!-- Corporate / Brand Association (Only available for Appliances Category) -->
+        <div x-show="isAppliances" x-cloak class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <div class="flex items-center">
                 <label class="inline-flex items-center cursor-pointer">
                     <input type="checkbox" name="is_brand_job" value="1" x-model="isBrand" 
@@ -196,6 +196,7 @@
 <script>
     function jobPricingForm() {
         return {
+            categories: @json($categories),
             selectedCategory: '{{ old('category_id', $job->category_id) }}',
             subCategories: [],
             isBrand: {{ old('is_brand_job', ($job->is_brand_job || $job->brand_id) ? 1 : 0) ? 'true' : 'false' }},
@@ -209,10 +210,28 @@
             promoWorkerPayment: '{{ old('promotional_worker_payment', $job->promotional_worker_payment ?? '') }}',
             promoCommission: '{{ old('promotional_commission', $job->promotional_commission ?? '') }}',
 
+            get isAppliances() {
+                if (!this.selectedCategory) return false;
+                const cat = this.categories.find(c => c.id == this.selectedCategory);
+                return cat ? (cat.slug === 'appliances' || cat.title.toLowerCase().includes('appliance')) : false;
+            },
+
             init() {
                 this.fetchSubCategories();
+                if (!this.isAppliances) {
+                    this.isBrand = false;
+                }
                 this.calculateCommission();
                 this.calculatePromoCommission();
+            },
+
+            onCategoryChange() {
+                this.fetchSubCategories();
+                if (!this.isAppliances) {
+                    this.isBrand = false;
+                    this.brandRate = 0;
+                    this.calculateCommission();
+                }
             },
 
             onBrandToggle() {

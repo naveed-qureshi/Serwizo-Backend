@@ -298,6 +298,20 @@ class ServiceRequestController extends Controller
             if (!$primaryJobId) $primaryJobId = ServiceJob::first()?->id;
             if (!$primaryCategoryId) $primaryCategoryId = ServiceJob::find($primaryJobId)?->category_id ?? Category::first()?->id;
 
+            // Enforce Rule: Only Appliances category may have Free Installation, Brand Job, or Brand Rates
+            $selectedCategoryModel = Category::find($primaryCategoryId);
+            $isAppliancesCategory = $selectedCategoryModel && strtolower($selectedCategoryModel->slug ?? '') === 'appliances';
+            if (!$isAppliancesCategory) {
+                $isFreeInstallation = false;
+                $isBrandJob = false;
+                $brandId = null;
+                $brandRate = 0.00;
+                if ($jobNature === 'free_installation' || $jobNature === 'brand_after_sale') {
+                    $jobNature = 'standard';
+                }
+            }
+            $warrantyCoverage = ($isAppliancesCategory && $jobNature === 'brand_after_sale') ? ($validated['warranty_coverage'] ?? null) : null;
+
             // 3. Create Service Request
             $srNumber = $this->srService->generateSrNumber();
 
@@ -317,7 +331,7 @@ class ServiceRequestController extends Controller
                 'service_value' => $serviceValue,
                 'parts_value' => $partsValue,
                 'job_nature' => $jobNature,
-                'warranty_coverage' => $validated['warranty_coverage'] ?? null,
+                'warranty_coverage' => $warrantyCoverage,
                 'preferred_date' => $validated['preferred_date'] ?? null,
                 'preferred_time' => $validated['preferred_time'] ?? null,
                 'request_source' => $validated['request_source'],
@@ -638,6 +652,20 @@ class ServiceRequestController extends Controller
             if (!$primaryJobId) $primaryJobId = $serviceRequest->service_job_id ?: ServiceJob::first()?->id;
             if (!$primaryCategoryId) $primaryCategoryId = $serviceRequest->category_id ?: (ServiceJob::find($primaryJobId)?->category_id ?? Category::first()?->id);
 
+            // Enforce Rule: Only Appliances category may have Free Installation, Brand Job, or Brand Rates
+            $selectedCategoryModel = Category::find($primaryCategoryId);
+            $isAppliancesCategory = $selectedCategoryModel && strtolower($selectedCategoryModel->slug ?? '') === 'appliances';
+            if (!$isAppliancesCategory) {
+                $isFreeInstallation = false;
+                $isBrandJob = false;
+                $brandId = null;
+                $brandRate = 0.00;
+                if ($jobNature === 'free_installation' || $jobNature === 'brand_after_sale') {
+                    $jobNature = 'standard';
+                }
+            }
+            $warrantyCoverage = ($isAppliancesCategory && $jobNature === 'brand_after_sale') ? ($validated['warranty_coverage'] ?? null) : null;
+
             $assignedAt = !empty($validated['assigned_at']) ? Carbon::parse($validated['assigned_at']) : null;
             $startedAt = !empty($validated['started_at']) ? Carbon::parse($validated['started_at']) : null;
             $completedAt = !empty($validated['completed_at']) ? Carbon::parse($validated['completed_at']) : null;
@@ -665,7 +693,7 @@ class ServiceRequestController extends Controller
                 'is_free_installation' => $isFreeInstallation,
                 'is_brand_job' => $isBrandJob,
                 'job_nature' => $jobNature,
-                'warranty_coverage' => $validated['warranty_coverage'] ?? null,
+                'warranty_coverage' => $warrantyCoverage,
                 'brand_id' => $brandId,
                 'model_number' => $validated['model_number'] ?? null,
                 'serial_number' => $validated['serial_number'] ?? null,

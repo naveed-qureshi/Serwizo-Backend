@@ -30,6 +30,13 @@ class ServiceJob extends Model
         'brand_rate',
     ];
 
+    protected $appends = [
+        'customer_price',
+        'worker_payment',
+        'commission',
+        'discount_percentage',
+    ];
+
     protected function casts(): array
     {
         return [
@@ -69,6 +76,21 @@ class ServiceJob extends Model
             return (float)$this->promotional_commission;
         }
         return (float)$this->default_commission;
+    }
+
+    public function getCustomerPriceAttribute(): float
+    {
+        return $this->getEffectiveCustomerPriceAttribute();
+    }
+
+    public function getWorkerPaymentAttribute(): float
+    {
+        return $this->getEffectiveWorkerPaymentAttribute();
+    }
+
+    public function getCommissionAttribute(): float
+    {
+        return $this->getEffectiveCommissionAttribute();
     }
 
     public function getDiscountPercentageAttribute(): ?int

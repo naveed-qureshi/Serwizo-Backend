@@ -5,7 +5,7 @@
 @section('header_subtitle', 'Operational Modification, Additional Jobs & Financial Overrides')
 
 @section('content')
-<div class="max-w-6xl mx-auto py-6" x-data="serviceEditWizard()">
+<div class="max-w-7xl mx-auto py-6" x-data="serviceEditWizard()">
     <form action="{{ route('service-requests.update', $serviceRequest) }}" method="POST" class="space-y-6">
         @csrf
         @method('PUT')
@@ -73,11 +73,11 @@
                         <i class="fa-solid fa-plus text-[10px]"></i>
                         <span>Add Service Row</span>
                     </button>
-                    <button type="button" @click="addItem('parts')" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs transition shadow-sm flex items-center space-x-1">
+                    <button x-show="isAppliancesCategory" x-cloak type="button" @click="addItem('parts')" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs transition shadow-sm flex items-center space-x-1">
                         <i class="fa-solid fa-wrench text-[10px]"></i>
                         <span>Add Parts / Material</span>
                     </button>
-                    <button type="button" @click="addItem('free_installation')" class="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg text-xs transition shadow-sm flex items-center space-x-1">
+                    <button x-show="isAppliancesCategory" x-cloak type="button" @click="addItem('free_installation')" class="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg text-xs transition shadow-sm flex items-center space-x-1">
                         <i class="fa-solid fa-gift text-[10px]"></i>
                         <span>Free Installation</span>
                     </button>
@@ -120,7 +120,7 @@
                                 <th class="p-3 w-20 text-center">Qty</th>
                                 <th class="p-3 w-28 text-right">Unit Price (Rs.)</th>
                                 <th class="p-3 w-28 text-right">Worker Wage (Rs.)</th>
-                                <th class="p-3 w-28 text-right">Brand Rate (Rs.)</th>
+                                <th x-show="isAppliancesCategory" class="p-3 w-28 text-right">Brand Rate (Rs.)</th>
                                 <th class="p-3 w-28 text-right">Customer Total</th>
                                 <th class="p-3 w-12 text-center">Action</th>
                             </tr>
@@ -134,7 +134,7 @@
                                                 class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
                                             <option value="">-- Choose Catalog Job or Custom --</option>
                                             <option value="custom">[+ Custom Item / Extra Material / Repair]</option>
-                                            <template x-for="job in allJobs" :key="job.id">
+                                            <template x-for="job in availableJobs" :key="job.id">
                                                 <option :value="job.id" x-text="job.title + (job.brand ? ' [' + job.brand.name + ']' : '') + ' (Rs. ' + job.customer_price + ')'"></option>
                                             </template>
                                         </select>
@@ -144,10 +144,9 @@
                                     <td class="p-3">
                                         <select x-model="item.job_nature" @change="onItemNatureChange(item)"
                                                 class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
-                                            <option value="standard">Cash Job (Customer Paid)</option>
-                                            <option value="free_installation">Free Installation (Brand)</option>
-                                            <option value="parts">Parts / Extra Material</option>
-                                            <option value="brand_after_sale">Brand After-Sale</option>
+                                            <template x-for="nature in availableJobNatures" :key="nature.value">
+                                                <option :value="nature.value" x-text="nature.label" :selected="item.job_nature === nature.value"></option>
+                                            </template>
                                         </select>
                                     </td>
                                     <td class="p-3 text-center">
@@ -164,7 +163,7 @@
                                         <input type="number" step="1" min="0" x-model.number="item.unit_wage" @input="recalculateItem(item)"
                                                class="w-24 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-right font-bold text-blue-700 focus:ring-1 focus:ring-emerald-500 outline-none">
                                     </td>
-                                    <td class="p-3 text-right">
+                                    <td x-show="isAppliancesCategory" class="p-3 text-right">
                                         <input type="number" step="1" min="0" x-model.number="item.brand_rate" @input="recalculateItem(item)"
                                                :disabled="item.job_nature !== 'free_installation' && item.job_nature !== 'brand_after_sale'"
                                                class="w-24 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-right font-bold text-amber-700 focus:ring-1 focus:ring-emerald-500 outline-none"
@@ -191,13 +190,13 @@
                     <button type="button" @click="addItem('standard')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition border border-slate-300">
                         <i class="fa-solid fa-plus text-emerald-600 mr-1"></i> Add Another Service
                     </button>
-                    <button type="button" @click="addItem('parts')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition border border-slate-300">
+                    <button x-show="isAppliancesCategory" x-cloak type="button" @click="addItem('parts')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition border border-slate-300">
                         <i class="fa-solid fa-wrench text-blue-600 mr-1"></i> Add Extra Material / Spare Part
                     </button>
                 </div>
 
                 <!-- Brand Details (If Free Installation or Brand Job) -->
-                <div x-show="hasBrand || hasFreeInstall" x-cloak class="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-3">
+                <div x-show="isAppliancesCategory && (hasBrand || hasFreeInstall)" x-cloak class="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-3">
                     <div class="flex items-center space-x-2 text-amber-900 font-bold uppercase tracking-wider text-[11px]">
                         <i class="fa-solid fa-award text-amber-600"></i>
                         <span>Brand Partner & Warranty Controls</span>
@@ -224,19 +223,22 @@
                         </div>
                     </div>
 
-                    <div class="pt-2 border-t border-amber-200 grid grid-cols-3 gap-2">
-                        <label class="p-2 bg-white rounded-lg border text-center cursor-pointer" :class="warrantyCoverage === 'out_of_warranty' ? 'border-rose-500 font-bold text-rose-700' : ''">
-                            <input type="radio" name="warranty_coverage" value="out_of_warranty" x-model="warrantyCoverage" class="sr-only">
-                            Out of Warranty
-                        </label>
-                        <label class="p-2 bg-white rounded-lg border text-center cursor-pointer" :class="warrantyCoverage === 'in_warranty' ? 'border-emerald-500 font-bold text-emerald-700' : ''">
-                            <input type="radio" name="warranty_coverage" value="in_warranty" x-model="warrantyCoverage" class="sr-only">
-                            In Warranty (Corporate)
-                        </label>
-                        <label class="p-2 bg-white rounded-lg border text-center cursor-pointer" :class="warrantyCoverage === 'partial_warranty' ? 'border-amber-500 font-bold text-amber-700' : ''">
-                            <input type="radio" name="warranty_coverage" value="partial_warranty" x-model="warrantyCoverage" class="sr-only">
-                            Partial Warranty
-                        </label>
+                    <div x-show="hasBrandAfterSale" x-cloak class="pt-2 border-t border-amber-200">
+                        <label class="font-bold text-amber-950 block mb-1.5 uppercase text-[10px] tracking-wider">After-Sale Warranty Coverage Status</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <label class="p-2 bg-white rounded-lg border text-center cursor-pointer" :class="warrantyCoverage === 'out_of_warranty' ? 'border-rose-500 font-bold text-rose-700' : ''">
+                                <input type="radio" name="warranty_coverage" value="out_of_warranty" x-model="warrantyCoverage" class="sr-only">
+                                Out of Warranty
+                            </label>
+                            <label class="p-2 bg-white rounded-lg border text-center cursor-pointer" :class="warrantyCoverage === 'in_warranty' ? 'border-emerald-500 font-bold text-emerald-700' : ''">
+                                <input type="radio" name="warranty_coverage" value="in_warranty" x-model="warrantyCoverage" class="sr-only">
+                                In Warranty (Corporate)
+                            </label>
+                            <label class="p-2 bg-white rounded-lg border text-center cursor-pointer" :class="warrantyCoverage === 'partial_warranty' ? 'border-amber-500 font-bold text-amber-700' : ''">
+                                <input type="radio" name="warranty_coverage" value="partial_warranty" x-model="warrantyCoverage" class="sr-only">
+                                Partial Warranty
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -316,8 +318,8 @@
                 <input type="hidden" name="parts_value" :value="partsValue">
                 <input type="hidden" name="quantity" :value="totalQuantity">
                 <input type="hidden" name="job_nature" :value="jobNature">
-                <input type="hidden" name="is_free_installation" :value="hasFreeInstall ? '1' : '0'">
-                <input type="hidden" name="is_brand_job" :value="(hasBrand || hasFreeInstall || selectedBrandId) ? '1' : '0'">
+                <input type="hidden" name="is_free_installation" :value="(isAppliancesCategory && hasFreeInstall) ? '1' : '0'">
+                <input type="hidden" name="is_brand_job" :value="(isAppliancesCategory && (hasBrand || hasFreeInstall || selectedBrandId)) ? '1' : '0'">
             </div>
         </div>
 
@@ -516,11 +518,43 @@
 <script>
     function serviceEditWizard() {
         return {
+            categories: @json($categories),
             selectedCategory: '{{ old('category_id', $serviceRequest->category_id) }}',
             selectedSubCategory: '{{ old('sub_category_id', $serviceRequest->sub_category_id) }}',
             subCategories: @json($subCategories),
             allJobs: @json($jobs),
             primaryJobId: '{{ old('service_job_id', $serviceRequest->service_job_id) }}',
+
+            get isAppliancesCategory() {
+                if (!this.selectedCategory) return false;
+                const cat = this.categories.find(c => c.id == this.selectedCategory);
+                return cat ? (cat.slug === 'appliances' || cat.title.toLowerCase().includes('appliance')) : false;
+            },
+
+            get availableJobs() {
+                if (!this.selectedCategory) {
+                    return this.allJobs;
+                }
+                return this.allJobs.filter(j => j.category_id == this.selectedCategory);
+            },
+
+            get availableJobNatures() {
+                if (this.isAppliancesCategory) {
+                    return [
+                        { value: 'standard', label: 'Cash Job (Customer Paid)' },
+                        { value: 'free_installation', label: 'Free Installation (Brand)' },
+                        { value: 'parts', label: 'Parts / Extra Material' },
+                        { value: 'brand_after_sale', label: 'Brand After-Sale' }
+                    ];
+                }
+                return [
+                    { value: 'standard', label: 'Cash Job (Customer Paid)' }
+                ];
+            },
+
+            get hasBrandAfterSale() {
+                return this.items.some(i => i.job_nature === 'brand_after_sale');
+            },
             
             jobNature: '{{ old('job_nature', $serviceRequest->job_nature ?: ($serviceRequest->is_free_installation ? 'free_installation' : ($serviceRequest->brand_id ? 'brand_after_sale' : 'standard'))) }}',
             warrantyCoverage: '{{ old('warranty_coverage', $serviceRequest->warranty_coverage ?: 'out_of_warranty') }}',
@@ -744,6 +778,36 @@
             async onCategoryChange() {
                 this.subCategories = [];
                 this.selectedSubCategory = '';
+
+                // Reset non-applicable options when changing away from Appliances
+                if (!this.isAppliancesCategory) {
+                    this.items.forEach(item => {
+                        if (item.job_nature === 'free_installation' || item.job_nature === 'brand_after_sale' || item.job_nature === 'parts') {
+                            item.job_nature = 'standard';
+                        }
+                        if (item.job_id && item.job_id !== 'custom') {
+                            const job = this.allJobs.find(j => j.id == item.job_id);
+                            if (job && job.category_id != this.selectedCategory) {
+                                item.job_id = '';
+                                item.title = '';
+                            }
+                        }
+                    });
+                    this.selectedBrandId = '';
+                    this.warrantyCoverage = 'out_of_warranty';
+                    this.recalculateTotals();
+                } else {
+                    this.items.forEach(item => {
+                        if (item.job_id && item.job_id !== 'custom') {
+                            const job = this.allJobs.find(j => j.id == item.job_id);
+                            if (job && job.category_id != this.selectedCategory) {
+                                item.job_id = '';
+                                item.title = '';
+                            }
+                        }
+                    });
+                }
+
                 if (!this.selectedCategory) return;
 
                 try {

@@ -80,7 +80,10 @@ class ServiceJobController extends Controller
             'brand_rate' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $isBrandJob = !empty($validated['is_brand_job']) || !empty($validated['brand_id']);
+        $category = Category::find($validated['category_id']);
+        $isAppliances = $category && strtolower($category->slug ?? '') === 'appliances';
+
+        $isBrandJob = $isAppliances && (!empty($validated['is_brand_job']) || !empty($validated['brand_id']));
         $isFreeInstallation = $isBrandJob;
         $brandId = $isBrandJob ? ($validated['brand_id'] ?? null) : null;
         $brandRate = $isBrandJob ? (float)($validated['brand_rate'] ?? 0) : 0.00;
@@ -172,7 +175,10 @@ class ServiceJobController extends Controller
             'brand_rate' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $isBrandJob = !empty($validated['is_brand_job']) || !empty($validated['brand_id']);
+        $category = Category::find($validated['category_id']);
+        $isAppliances = $category && strtolower($category->slug ?? '') === 'appliances';
+
+        $isBrandJob = $isAppliances && (!empty($validated['is_brand_job']) || !empty($validated['brand_id']));
         $isFreeInstallation = $isBrandJob;
         $brandId = $isBrandJob ? ($validated['brand_id'] ?? null) : null;
         $brandRate = $isBrandJob ? (float)($validated['brand_rate'] ?? 0) : 0.00;
