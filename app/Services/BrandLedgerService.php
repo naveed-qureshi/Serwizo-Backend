@@ -24,7 +24,10 @@ class BrandLedgerService
 
         $running = 0.00;
         foreach ($transactions as $tx) {
-            $running = $running + (float)$tx->debit - (float)$tx->credit;
+            // Reversed and reversal transactions must not alter running balance
+            if (!$tx->is_reversed && $tx->transaction_type !== 'reversal') {
+                $running = $running + (float)$tx->debit - (float)$tx->credit;
+            }
             if (abs((float)$tx->running_balance - $running) > 0.0001) {
                 $tx->update(['running_balance' => $running]);
             }
@@ -56,6 +59,7 @@ class BrandLedgerService
 
         $existingTx = BrandLedger::where('service_request_id', $serviceRequest->id)
             ->where('is_reversed', false)
+            ->where('transaction_type', '!=', 'reversal')
             ->first();
 
         // If no longer eligible for brand billing (e.g. rate set to 0 or brand removed), reverse existing
@@ -293,6 +297,7 @@ class BrandLedgerService
                 'debit' => $reverseDebit,
                 'credit' => $reverseCredit,
                 'running_balance' => 0.00,
+                'is_reversed' => true,
                 'description' => "REVERSAL of {$transaction->transaction_number}: {$reason}",
                 'reference_number' => $transaction->transaction_number,
                 'created_by_user_id' => $userId,

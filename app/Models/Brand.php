@@ -60,10 +60,21 @@ class Brand extends Model
     public function getLedgerBalance(): float
     {
         $lastTx = BrandLedger::where('brand_id', $this->id)
+            ->where('is_reversed', false)
+            ->where('transaction_type', '!=', 'reversal')
             ->orderBy('created_at', 'desc')
             ->orderBy('id', 'desc')
             ->first();
 
-        return $lastTx ? (float)$lastTx->running_balance : 0.00;
+        if ($lastTx) {
+            return (float)$lastTx->running_balance;
+        }
+
+        $anyTx = BrandLedger::where('brand_id', $this->id)
+            ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        return $anyTx ? (float)$anyTx->running_balance : 0.00;
     }
 }

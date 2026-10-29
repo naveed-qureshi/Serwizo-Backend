@@ -235,6 +235,7 @@ class ServiceRequestService
                 // any active posted transactions in Worker and Brand ledgers must be reversed automatically!
                 $workerTxs = LedgerTransaction::where('service_request_id', $serviceRequest->id)
                     ->where('is_reversed', false)
+                    ->where('transaction_type', '!=', 'reversal')
                     ->get();
                 foreach ($workerTxs as $tx) {
                     $this->workerLedgerService->reverseTransaction(
@@ -246,6 +247,7 @@ class ServiceRequestService
 
                 $brandTxs = BrandLedger::where('service_request_id', $serviceRequest->id)
                     ->where('is_reversed', false)
+                    ->where('transaction_type', '!=', 'reversal')
                     ->get();
                 foreach ($brandTxs as $btx) {
                     $this->brandLedgerService->reverseTransaction(
@@ -299,6 +301,7 @@ class ServiceRequestService
             // 1. Reverse Worker Ledger Transactions if posted
             $workerTxs = LedgerTransaction::where('service_request_id', $serviceRequest->id)
                 ->where('is_reversed', false)
+                ->where('transaction_type', '!=', 'reversal')
                 ->get();
             foreach ($workerTxs as $tx) {
                 $this->workerLedgerService->reverseTransaction(
@@ -311,6 +314,7 @@ class ServiceRequestService
             // 2. Reverse Brand Ledger Transactions if posted
             $brandTxs = BrandLedger::where('service_request_id', $serviceRequest->id)
                 ->where('is_reversed', false)
+                ->where('transaction_type', '!=', 'reversal')
                 ->get();
             foreach ($brandTxs as $btx) {
                 $this->brandLedgerService->reverseTransaction(

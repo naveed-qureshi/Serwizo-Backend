@@ -155,8 +155,16 @@ class Worker extends Authenticatable
 
     public function getLedgerBalance(): float
     {
-        $lastTx = $this->ledgerTransactions()->first();
-        return $lastTx ? (float)$lastTx->running_balance : 0.00;
+        $lastTx = $this->ledgerTransactions()
+            ->where('is_reversed', false)
+            ->where('transaction_type', '!=', 'reversal')
+            ->first();
+        if ($lastTx) {
+            return (float)$lastTx->running_balance;
+        }
+
+        $anyTx = $this->ledgerTransactions()->first();
+        return $anyTx ? (float)$anyTx->running_balance : 0.00;
     }
 
     public function isAvailable(): bool

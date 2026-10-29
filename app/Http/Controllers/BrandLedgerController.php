@@ -30,6 +30,7 @@ class BrandLedgerController extends Controller
         $brandId = $request->get('brand_id', $brands->first()?->id);
 
         if ($brandId) {
+            $this->brandLedgerService->recalculateBrandBalances((int)$brandId);
             $selectedBrand = Brand::findOrFail($brandId);
             $currentBalance = $selectedBrand->getLedgerBalance();
 

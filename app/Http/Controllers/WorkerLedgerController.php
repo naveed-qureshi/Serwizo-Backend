@@ -33,6 +33,16 @@ class WorkerLedgerController extends Controller
             $query->where('primary_city_id', $cityId);
         }
 
+        // Auto-recalculate any workers that have reversed transactions to keep running balances accurate
+        $workersWithReversals = LedgerTransaction::where('is_reversed', true)
+            ->distinct()
+            ->pluck('worker_id');
+        foreach ($workersWithReversals as $wId) {
+            if ($wId) {
+                $this->ledgerService->recalculateWorkerBalances($wId);
+            }
+        }
+
         $workers = $query->paginate(15)->withQueryString();
 
         // Calculate ledger totals across all workers
@@ -55,6 +65,9 @@ class WorkerLedgerController extends Controller
 
     public function show(Request $request, Worker $worker)
     {
+        // Ensure running balances are updated and clean before displaying
+        $this->ledgerService->recalculateWorkerBalances($worker->id);
+
         $worker->load(['primaryCity', 'bankDetail']);
 
         $query = LedgerTransaction::with([

@@ -24,7 +24,10 @@ class WorkerLedgerService
 
         $running = 0.00;
         foreach ($transactions as $tx) {
-            $running = $running + (float)$tx->credit - (float)$tx->debit;
+            // Reversed and reversal transactions must not alter running balance
+            if (!$tx->is_reversed && $tx->transaction_type !== 'reversal') {
+                $running = $running + (float)$tx->credit - (float)$tx->debit;
+            }
             if (abs((float)$tx->running_balance - $running) > 0.0001) {
                 $tx->update(['running_balance' => $running]);
             }
@@ -56,6 +59,7 @@ class WorkerLedgerService
 
         $existingTx = LedgerTransaction::where('service_request_id', $serviceRequest->id)
             ->where('is_reversed', false)
+            ->where('transaction_type', '!=', 'reversal')
             ->first();
 
         if (!$isEligible) {
@@ -315,6 +319,7 @@ class WorkerLedgerService
                 'debit' => $reverseDebit,
                 'credit' => $reverseCredit,
                 'running_balance' => 0.00,
+                'is_reversed' => true,
                 'description' => "REVERSAL of {$transaction->transaction_number}: {$reason}",
                 'reference_number' => $transaction->transaction_number,
                 'created_by_user_id' => $userId,
