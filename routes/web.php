@@ -210,18 +210,25 @@ Route::middleware('auth')->group(function () {
         Route::get('/reports/workers', [ReportController::class, 'workers'])->name('reports.workers');
     });
 
-    // Accounts & Super Admin Routes
-    Route::middleware('role:super_admin,accounts')->group(function () {
-        // Worker Ledgers
+    // Ledger Viewing & Export Routes (Super Admin, Accounts & Operations)
+    Route::middleware('role:super_admin,accounts,operations')->group(function () {
+        // Worker Ledgers (View & Export)
         Route::get('/ledger', [WorkerLedgerController::class, 'index'])->name('ledger.index');
         Route::get('/ledger/worker/{worker}', [WorkerLedgerController::class, 'show'])->name('ledger.show');
-        Route::post('/ledger/worker/{worker}/transaction', [WorkerLedgerController::class, 'postManualTransaction'])->name('ledger.transaction');
-        Route::post('/ledger/transaction/{transaction}/reverse', [WorkerLedgerController::class, 'reverseTransaction'])->name('ledger.reverse');
         Route::get('/ledger/worker/{worker}/export-csv', [WorkerLedgerController::class, 'exportCsv'])->name('ledger.export');
 
-        // Brand Ledgers & Receivables
+        // Brand Ledgers & Receivables (View & Export)
         Route::get('/brand-ledger', [BrandLedgerController::class, 'index'])->name('brand-ledger.index');
         Route::get('/brand-ledger/{brand}/export', [BrandLedgerController::class, 'exportExcel'])->name('brand-ledger.export');
+    });
+
+    // Accounts & Super Admin Financial Management Routes
+    Route::middleware('role:super_admin,accounts')->group(function () {
+        // Worker Ledger Actions (Manual Adjustments & Reversals)
+        Route::post('/ledger/worker/{worker}/transaction', [WorkerLedgerController::class, 'postManualTransaction'])->name('ledger.transaction');
+        Route::post('/ledger/transaction/{transaction}/reverse', [WorkerLedgerController::class, 'reverseTransaction'])->name('ledger.reverse');
+
+        // Brand Ledger Actions (Payments, Adjustments & Reversals)
         Route::post('/brand-ledger/{brand}/payment', [BrandLedgerController::class, 'storePayment'])->name('brand-ledger.payment');
         Route::post('/brand-ledger/{brand}/adjustment', [BrandLedgerController::class, 'storeAdjustment'])->name('brand-ledger.adjustment');
         Route::post('/brand-ledger/{brandLedger}/reverse', [BrandLedgerController::class, 'reverse'])->name('brand-ledger.reverse');

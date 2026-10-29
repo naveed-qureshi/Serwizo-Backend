@@ -25,6 +25,7 @@
             <span class="text-[11px] text-slate-400">Advance payments or deductions pending</span>
         </div>
 
+        @if(auth()->user()->isAccounts())
         <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
             <div>
                 <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Quick Action</span>
@@ -34,6 +35,7 @@
                 <i class="fa-solid fa-money-bill-wave mr-1"></i> Pay Worker
             </a>
         </div>
+        @endif
     </div>
 
     <!-- Filter and Search Bar -->
@@ -119,11 +121,13 @@
                                 <i class="fa-solid fa-book-journal-whills"></i>
                                 <span>Ledger</span>
                             </a>
+                            @if(auth()->user()->isAccounts())
                             <a href="{{ route('payments.create', ['worker_id' => $worker->id]) }}" 
                                class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-lg text-xs border border-emerald-200 transition inline-flex items-center space-x-1">
                                 <i class="fa-solid fa-money-bill-wave"></i>
                                 <span>Pay</span>
                             </a>
+                            @endif
                         </td>
                     </tr>
                     @empty

@@ -160,7 +160,7 @@
                 </a>
                 @endif
 
-                @if(auth()->user()->isAccounts())
+                @if(auth()->user()->isAccounts() || auth()->user()->isOperations())
                 <div class="pt-4 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Finance & Ledgers</div>
 
                 <a href="{{ route('brand-ledger.index') }}" 
@@ -175,11 +175,13 @@
                     <span>Worker Ledgers</span>
                 </a>
 
+                @if(auth()->user()->isAccounts())
                 <a href="{{ route('payments.index') }}" 
                    class="flex items-center space-x-3 px-3 py-2.5 rounded-lg transition {{ request()->routeIs('payments.*') ? 'bg-emerald-600 text-white font-semibold shadow' : 'hover:bg-slate-800 text-slate-300' }}">
                     <i class="fa-solid fa-money-bill-wave w-5 text-center"></i>
                     <span>Worker Payments</span>
                 </a>
+                @endif
                 @endif
 
                 <div class="pt-4 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Reports</div>

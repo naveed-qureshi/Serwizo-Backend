@@ -29,7 +29,7 @@
             </div>
         </form>
 
-        @if($selectedBrand)
+        @if($selectedBrand && auth()->user()->isAccounts())
         <div class="flex items-center space-x-2 shrink-0">
             <button @click="paymentModal = true" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition">
                 <i class="fa-solid fa-money-bill-transfer mr-1.5"></i>
@@ -255,9 +255,13 @@
                         <!-- Action: Reverse -->
                         <td class="py-3 px-2 text-center whitespace-nowrap">
                             @if(!$tx->is_reversed && $tx->transaction_type !== 'reversal')
-                            <button @click="selectedTx = {{ $tx }}; reverseModal = true" title="Reverse Transaction" class="text-slate-400 hover:text-rose-600 p-1 transition">
-                                <i class="fa-solid fa-rotate-left"></i>
-                            </button>
+                                @if(auth()->user()->isAccounts())
+                                <button @click="selectedTx = {{ $tx }}; reverseModal = true" title="Reverse Transaction" class="text-slate-400 hover:text-rose-600 p-1 transition">
+                                    <i class="fa-solid fa-rotate-left"></i>
+                                </button>
+                                @else
+                                <span class="text-[9px] text-slate-400 font-medium">Posted</span>
+                                @endif
                             @elseif($tx->is_reversed)
                             <span class="text-[9px] text-rose-500 font-bold uppercase bg-rose-50 px-1 py-0.5 rounded">Reversed</span>
                             @else
@@ -298,6 +302,7 @@
         </div>
     </div>
 
+    @if(auth()->user()->isAccounts())
     <!-- Record Payment Modal -->
     <div x-show="paymentModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" x-cloak>
         <div @click.away="paymentModal = false" class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-xs">
@@ -416,6 +421,7 @@
             </form>
         </div>
     </div>
+    @endif
     @else
     <div class="bg-white p-12 rounded-xl text-center shadow-sm border border-slate-200">
         <i class="fa-solid fa-building text-slate-300 text-4xl mb-3"></i>

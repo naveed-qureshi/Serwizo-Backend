@@ -24,12 +24,14 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2 shrink-0">
+            @if(auth()->user()->isAccounts())
             <button @click="adjustModal = true" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg text-xs transition">
                 <i class="fa-solid fa-plus-minus mr-1"></i> Post Adjustment
             </button>
             <a href="{{ route('payments.create', ['worker_id' => $worker->id]) }}" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition">
                 <i class="fa-solid fa-money-bill-wave mr-1"></i> Pay Worker
             </a>
+            @endif
             <a href="{{ route('ledger.export', ['worker' => $worker->id, 'start_date' => request('start_date'), 'end_date' => request('end_date'), 'type' => request('type')]) }}" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition flex items-center gap-1.5" title="Download Excel Format">
                 <i class="fa-solid fa-file-excel"></i>
                 <span>Download Excel</span>
@@ -170,10 +172,14 @@
                         <!-- Action -->
                         <td class="py-3 px-3 text-center font-sans whitespace-nowrap">
                             @if(!$tx->is_reversed && $tx->transaction_type !== 'reversal')
-                            <button @click="selectedTx = {{ $tx->id }}; txNumber = '{{ $tx->transaction_number }}'; reverseModal = true" 
-                                    class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded text-[11px] font-semibold transition" title="Reverse Transaction">
-                                <i class="fa-solid fa-rotate-left mr-0.5"></i> Void
-                            </button>
+                                @if(auth()->user()->isAccounts())
+                                <button @click="selectedTx = {{ $tx->id }}; txNumber = '{{ $tx->transaction_number }}'; reverseModal = true" 
+                                        class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded text-[11px] font-semibold transition" title="Reverse Transaction">
+                                    <i class="fa-solid fa-rotate-left mr-0.5"></i> Void
+                                </button>
+                                @else
+                                <span class="text-[10px] text-slate-400 font-medium">Posted</span>
+                                @endif
                             @elseif($tx->is_reversed)
                             <span class="text-[10px] text-rose-500 font-bold uppercase font-sans">Reversed</span>
                             @endif
@@ -193,6 +199,7 @@
         @endif
     </div>
 
+    @if(auth()->user()->isAccounts())
     <!-- Post Manual Adjustment Modal -->
     <div x-show="adjustModal" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 flex items-center justify-center p-4" x-cloak>
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 text-xs border border-slate-200">
@@ -263,6 +270,7 @@
             </form>
         </div>
     </div>
+    @endif
 
 </div>
 @endsection
